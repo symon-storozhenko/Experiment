@@ -4,43 +4,75 @@ from csv import DictReader, DictWriter
 import datetime
 from pathlib import Path
 
+
+def deposit_trx():
+    row.update({'client': f'{row["client"]}',
+                'available': f'{float(row["available"]) + float(trx_line[3])}',
+                'total': f'{float(row["total"]) + float(trx_line[3])}'})
+
+
+def withdrawal_trx():
+    row.update({'client': f'{row["client"]}',
+                'available': f'{float(row["available"]) - float(trx_line[3])}',
+                'total': f'{float(row["total"]) - float(trx_line[3])}'})
+
+
+def dispute_trx():
+    global amount
+    amount = dispute[3]
+    row.update({'client': f'{row["client"]}',
+                'available': f'{float(row["available"]) - float(amount)}',
+                'held': f'{float(row["held"]) + float(amount)}'})
+
+
+def resolve_trx():
+    global amount
+    amount = resolve[3]
+    row.update({'client': f'{row["client"]}',
+                'available': f'{float(row["available"]) + float(amount)}',
+                'held': f'{float(row["held"]) - float(amount)}'})
+
+
+def chargeback_trx():
+    global amount
+    amount = chargeback[3]
+    row.update({'client': f'{row["client"]}',
+                'available': f'{float(row["total"]) + float(amount)}',
+                'held': f'{float(row["held"]) - float(amount)}',
+                'locked': 'true'})
+
+
 with open('transactions.csv') as inf, open('client_accounts.csv') as outf:
     trxs_reader = csv.reader(inf)
     custs_accts_reader = DictReader(outf)
     output = list(custs_accts_reader)
+    print(f'trxs_reader -> {trxs_reader}')
 
     for e, trx_line in enumerate(trxs_reader):
-        if trx_line[0] == 'type':
+        if not trx_line or trx_line[0] == 'type':
             continue
+        client_exists = False
         for row in output:
             if trx_line[1].lower() == row.get('client'):
+                client_exists = True
                 if row.get('locked').lower() == 'true':
                     break
                 if trx_line[0].lower() == 'deposit':
-                    row.update({'client': f'{row["client"]}',
-                                'available': f'{float(row["available"]) + float(trx_line[3])}',
-                                'total': f'{float(row["total"]) + float(trx_line[3])}'})
+                    deposit_trx()
 
                     print(f'\ndeposit for client {row.get("client")} with ${float(trx_line[3])}')
                     print(row)
                     break
                 elif trx_line[0].lower() == 'withdrawal':
-                    row.update({'client': f'{row["client"]}',
-                                'available': f'{float(row["available"]) - float(trx_line[3])}',
-                                'held': f'{row["held"]}',
-                                'total': f'{float(row["total"]) - float(trx_line[3])}',
-                                'locked': f'{row["locked"]}'})
-                    print(f'\nwithdrawal for client {row.get("client")}:')
+                    withdrawal_trx()
+                    print(f'\nwithdrawal for client {row.get("client")}  with ${float(trx_line[3])}')
                     print(row)
                 elif trx_line[0].lower() == 'dispute':
                     with open('transactions.csv') as dispute_loop:
                         dispute_reader = csv.reader(dispute_loop)
                         for dispute in dispute_reader:
                             if trx_line[2] == dispute[2]:
-                                amount = dispute[3]
-                                row.update({'client': f'{row["client"]}',
-                                            'available': f'{float(row["available"]) - float(amount)}',
-                                            'held': f'{float(row["held"]) + float(amount)}'})
+                                dispute_trx()
                                 print(f'\ndispute for client {row.get("client")}:')
                                 print(row)
                                 break
@@ -49,10 +81,7 @@ with open('transactions.csv') as inf, open('client_accounts.csv') as outf:
                         resolve_reader = csv.reader(resolve_loop)
                         for resolve in resolve_reader:
                             if trx_line[2] == resolve[2]:
-                                amount = resolve[3]
-                                row.update({'client': f'{row["client"]}',
-                                            'available': f'{float(row["available"]) + float(amount)}',
-                                            'held': f'{float(row["held"]) - float(amount)}'})
+                                resolve_trx()
                                 print(f'\nresolve for client {row.get("client")}:')
                                 print(row)
                                 break
@@ -61,20 +90,26 @@ with open('transactions.csv') as inf, open('client_accounts.csv') as outf:
                         chargeback_reader = csv.reader(chargeback_loop)
                         for chargeback in chargeback_reader:
                             if trx_line[2] == chargeback[2]:
-                                amount = chargeback[3]
-                                row.update({'client': f'{row["client"]}',
-                                            'available': f'{float(row["total"]) + float(amount)}',
-                                            'held': f'{float(row["held"]) - float(amount)}',
-                                            'locked': 'true'})
+                                chargeback_trx()
                                 print(f'\nchargeback for client {row.get("client")}:')
                                 print(row)
                                 break
-                else:
-                    output.append({'client': f'{trx_line[1]}',
-                                   'available': f'{trx_line[3]}',
-                                   'held': '0',
-                                   'total': f'{trx_line[3]}',
-                                   'locked': 'false'})
+        if not client_exists and trx_line[0].lower() == 'deposit':
+            output.append({'client': f'{trx_line[1]}',
+                           'available': f'{float(trx_line[3])}',
+                           'held': 0.0,
+                           'total': f'{float(trx_line[3])}',
+                           'locked': 'false'})
+            print(f'\nNew client deposit for client {trx_line[1]} with ${float(trx_line[3])}')
+            print(output[-1])
+        elif not client_exists and trx_line[0].lower() == 'withdrawal':
+            output.append({'client': f'{trx_line[1]}',
+                           'available': f'-{float(trx_line[3])}',
+                           'held': 0.0,
+                           'total': f'-{float(trx_line[3])}',
+                           'locked': 'false'})
+            print(f'\nNew client withdrawal for client {trx_line[1]} with ${float(trx_line[3])}')
+            print(output[-1])
 
     print("client,available,held,total,locked")
     for i in output:
@@ -85,3 +120,4 @@ with open('transactions.csv') as inf, open('client_accounts.csv') as outf:
               f"{i.get('locked')}")
 
 print(f"The value of n is {8.098976:g}")
+print(float('-120.0') + 7)
