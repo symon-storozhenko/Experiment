@@ -72,12 +72,16 @@ def payment_engine(transactions, clients_accounts):
                     elif trx_type == 'resolve':
                         with open(transactions) as resolve_loop:  # open a trxs file again to loop from beginning
                             resolve_reader = csv.reader(resolve_loop)
+                            under_dispute = False
+                            resolve_amount = 0
                             for resolve in resolve_reader:
-                                if not resolve or resolve[0] == 'type':
+                                if not resolve or resolve[0].lower() == 'type':
                                     continue
-                                if trx_row[2] == resolve[2]:
-                                    # resolve_trx()
+                                if trx_row[2] == resolve[2] and resolve[0].lower() == 'deposit' or \
+                                        resolve[0].lower() == 'withdrawal':
+                                    under_dispute = True
                                     resolve_amount = float(resolve[3])
+                                if under_dispute and trx_row[2] == resolve[2] and resolve[0].lower() == 'dispute':
                                     client_row.update({'available': f'{available + resolve_amount}',
                                                        'held': f'{held - resolve_amount}'})
                                     print(f'\nresolve for client {client_row.get("client")}:')
@@ -86,13 +90,18 @@ def payment_engine(transactions, clients_accounts):
                     elif trx_type == 'chargeback':
                         with open(transactions) as chargeback_loop:  # open a trxs file again to loop from beginning
                             chargeback_reader = csv.reader(chargeback_loop)
+                            chargeback_under_dispute = False
+                            chargeback_amount = 0
                             for chargeback in chargeback_reader:
-                                if not chargeback or chargeback[0] == 'type':
+                                if not chargeback or chargeback[0].lower() == 'type':
                                     continue
-                                if trx_row[2] == chargeback[2]:
-                                    # chargeback_trx()
+                                if trx_row[2] == chargeback[2] and chargeback[0].lower() == 'deposit' or \
+                                        chargeback[0].lower() == 'withdrawal':
+                                    chargeback_under_dispute = True
                                     chargeback_amount = float(chargeback[3])
-                                    client_row.update({'available': f'{total + chargeback_amount}',
+                                if chargeback_under_dispute and trx_row[2] == chargeback[2] \
+                                        and chargeback[0].lower() == 'dispute':
+                                    client_row.update({'total': f'{total - chargeback_amount}',
                                                        'held': f'{held - chargeback_amount}',
                                                        'locked': 'true'})
                                     print(f'\nchargeback for client {client_row.get("client")}:')
@@ -125,7 +134,7 @@ def payment_engine(transactions, clients_accounts):
 
 
 if __name__ == "__main__":
-    clients_account_list = payment_engine(trxs_file, clients_accts)
+    clients_account_list = payment_engine(sys.argv[1], clients_accts)
     print("client,available,held,total,locked")
     for i in clients_account_list:
         print(f"{i.get('client')},"
